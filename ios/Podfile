@@ -31,5 +31,39 @@ target 'GrosvenorGuestServicesCasino' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'fmt'
+
+      target.build_configurations.each do |build_config|
+        build_config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+
+        definitions = build_config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+        definitions = [definitions] if definitions.is_a?(String)
+        definitions << 'FMT_USE_CONSTEVAL=0' unless definitions.include?('FMT_USE_CONSTEVAL=0')
+        build_config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = definitions
+      end
+    end
+
+    Dir.glob(File.join(installer.sandbox.root, 'Target Support Files', 'fmt', 'fmt.*.xcconfig')).each do |xcconfig_path|
+      contents = File.read(xcconfig_path)
+      patched_contents = contents.gsub(/^CLANG_CXX_LANGUAGE_STANDARD = .+$/, 'CLANG_CXX_LANGUAGE_STANDARD = c++17')
+      unless patched_contents.include?('FMT_USE_CONSTEVAL=0')
+        patched_contents = patched_contents.gsub(
+          /^GCC_PREPROCESSOR_DEFINITIONS = (.*)$/,
+          'GCC_PREPROCESSOR_DEFINITIONS = \1 FMT_USE_CONSTEVAL=0'
+        )
+      end
+      File.chmod(File.stat(xcconfig_path).mode | 0o200, xcconfig_path)
+      File.write(xcconfig_path, patched_contents) if patched_contents != contents
+    end
+
+    fmt_base_header = File.join(installer.sandbox.root, 'fmt', 'include', 'fmt', 'base.h')
+    if File.exist?(fmt_base_header)
+      contents = File.read(fmt_base_header)
+      patched_contents = contents.gsub('#  define FMT_USE_CONSTEVAL 1', '#  define FMT_USE_CONSTEVAL 0')
+      File.chmod(File.stat(fmt_base_header).mode | 0o200, fmt_base_header)
+      File.write(fmt_base_header, patched_contents) if patched_contents != contents
+    end
   end
 end
